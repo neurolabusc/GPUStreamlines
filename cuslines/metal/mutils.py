@@ -73,6 +73,34 @@ BLOCK_Y = THR_X_BL // THR_X_SL
 PAGE_SIZE = 16384
 
 
+# PyObjC's Metal bindings carry no ownership metadata for the MTLDevice
+# protocol's new* methods, so PyObjC treats their +1 return as autoreleased
+# and never releases it: every per-batch MTLBuffer leaked (~19 GB / 588k seeds).
+# registerMetaDataForSelector replaces the inferred metadata, so pointer and
+# out-arguments must be restated here.
+def _register_metal_ownership():
+    import objc
+
+    ptr = {"type": b"n^v", "c_array_length_in_arg": 3}
+    err = {"type": b"o^@"}
+    for sel, args in (
+        (b"newBufferWithLength:options:", {}),
+        (b"newBufferWithBytes:length:options:", {2: ptr}),
+        (b"newCommandQueue", {}),
+        (b"newLibraryWithSource:options:error:", {4: err}),
+        (b"newFunctionWithName:", {}),
+        (b"newComputePipelineStateWithFunction:error:", {3: err}),
+    ):
+        objc.registerMetaDataForSelector(
+            b"NSObject",
+            sel,
+            {"retval": {"already_retained": True}, "arguments": args},
+        )
+
+
+_register_metal_ownership()
+
+
 def div_up(a, b):
     return (a + b - 1) // b
 
